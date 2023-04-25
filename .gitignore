@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+
+# Dev files
+client_secrets_file.json
+ancillary.md
+.venv
