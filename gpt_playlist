@@ -1,4 +1,6 @@
-import os, re, json
+#! /usr/bin/env python3
+
+import os, re, json, argparse
 from langchain.llms import OpenAI
 from langchain import PromptTemplate
 from langchain.chains import LLMChain
@@ -25,17 +27,18 @@ def create_yt_api():
     )
     return youtube
 
-def yt_link_parser(link: str) -> str:
-    """Parses yt playlist links to just the playlist ID."""
+def link_parser(link: str) -> str:
+    """Parses link input to just the playlist or video ID."""
+    video_pattern = r"^(?:https?://)?(?:www\.|music\.)?(?:youtube\.com/)?(?:watch\?v=)?([\w-]+)$"
     playlist_pattern = r"^(?:https?://)?(?:www\.|music\.)?(?:youtube\.com/)?(?:playlist\?list=)?([\w-]+)$"
 
-    match = re.match(playlist_pattern, link)
-    if match:
-        print(match)
+    if match := re.match(playlist_pattern, link):
         playlist_id = match.group(1)
         return playlist_id
-    else:
-        return "Invalid"
+    if match := re.match(video_pattern, link):
+        video_id = match.group(1)
+        return video_id
+    raise ValueError("Invalid Link")
 
 def get_playlist(playlistId: str) -> list:
     """Get video descriptions of each video in playlist via yt api."""
@@ -56,7 +59,21 @@ def get_playlist(playlistId: str) -> list:
             break
     return playlist_items
 
-def get_videos(playlist: list) -> list:
+def get_video(video_id: str) -> list:
+    youtube = create_yt_api()
+    video_request = youtube.videos().list(
+        part="snippet",
+        id=video_id
+    )
+    video_response = video_request.execute()
+    video_items = [*video_response["items"]]
+    return video_items
+
+def save(item, name) -> None:
+    with open(".yt_searches.json", "a") as f:
+        f.write("{" + f"{name}: {item}" + "}\n")
+
+def get_descriptions(playlist: list) -> list:
     video_descriptions = []
     for video in playlist:
         title = video["snippet"]["title"]
@@ -90,8 +107,7 @@ def gpt_parse_timestamp(title:str, description:str) -> str:
         chain = LLMChain(llm=llm, prompt=prompt)
         # video description will come back as
         parsed = chain.run(title=title, description=description)
-        print(f"\nparsed: {parsed}\n")
-        print(cb)
+        print(f"\n{cb}")
     return parsed
 
 def parse_video_descriptions(video_list: list) -> list:
@@ -106,6 +122,7 @@ def parse_video_descriptions(video_list: list) -> list:
             description = video["description"]
             parsed_description = gpt_parse_timestamp(title, description)
             parsed_json = json.loads(parsed_description)
+            save(parsed_json, "parsed_description")
             video["playlist"] = parsed_json["playlist"]
         else:
             print(f"\nskipping: {title}. Reason: no timestamps.")
@@ -120,7 +137,7 @@ def search_yt(video_list: list) -> list:
             #search song
             search_request = youtube.search().list(
                 part="snippet",
-                maxResults=10,
+                maxResults=5,
                 q=song["title"],
                 type="video"
             )
@@ -153,12 +170,12 @@ def gpt_pick_from_results(video_list: list) -> list:
             for song in video["playlist"]:
                 query = song["title"]
                 results = song["results"]
-                print(f"\nworking on song: {query}...")
+                print(f"\n: {query}...")
                 pick = chain.run(query=query, results=results)
                 try:
                     pick = json.loads(pick)
                 except:
-                    print("\ngpt could not decide.")
+                    print("\ngpt could not decide, picking first result")
                     pick = song["results"][0]
                 print(f"\npicked: {pick['title']} from results")
                 song["gpt_pick"] = pick
@@ -214,15 +231,31 @@ def create_playlist(video_list: list) -> None:
             populate_response = populate_request.execute()
     print("\n playlists created!")
 
-def playlist_scraper(link: str) -> None:
-    playlist_id = yt_link_parser(link)
-    playlist = get_playlist(playlist_id)
-    video_list = get_videos(playlist)
+def scraper(link_list: list) -> None:
+    save(link_list, "playlist")
+    video_list = get_descriptions(link_list)
     video_list_parsed = parse_video_descriptions(video_list)
     video_list_searched = search_yt(video_list_parsed)
     gpt_playlist = gpt_pick_from_results(video_list_searched)
-    create_playlist(gpt_playlist)
+    create_playlist(gpt_playlist) 
 
 if __name__ == "__main__":
-    link = input("paste link here: ")
-    playlist_scraper(link)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-p", "--playlist", 
+        help="flag indicates that the given link is a playlist link.",
+        action="store_true"
+    )
+    parser.add_argument("link", help="video or playlist link.")
+    args = parser.parse_args()
+
+    try:
+        link_id = link_parser(args.link)
+    except ValueError as e:
+        print(f"\n{e}\n Notice: link must not contain trailing ampersand arguments (watch?v=...&list=...) or be a youtu.be link")
+        exit(1)
+    if args.playlist:
+        link_list = get_playlist(link_id)
+    else:
+        link_list = get_video(link_id)
+    scraper(link_list)

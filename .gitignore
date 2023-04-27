@@ -6,5 +6,5 @@ __pycache__/
 
 # Dev files
 client_secrets_file.json
-ancillary.md
+ancillary/
 .venv
