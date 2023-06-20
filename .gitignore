@@ -3,8 +3,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# NPM
+node_modules/
+package-lock.json
+yarn.lock
+dist/
+build/
 
 # Dev files
 client_secrets_file.json
 ancillary/
 .venv
+.env
+cache.db

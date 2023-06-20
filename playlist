@@ -1,0 +1,128 @@
+#! /usr/bin/env python3
+
+from cache_tools import CacheTools, use_api_cache
+from difflib import SequenceMatcher
+import json, subprocess, re, argparse
+from dataclasses import dataclass
+
+def filter_chapters(data):
+    syntax_list = "\'\"“”‘’"
+    if data["chapters"] == []:
+        print("no chapters.")
+    else:
+        for chapter in data["chapters"]:
+            chapter["title"] = "".join([
+                character
+                for character in chapter["title"]
+                if character not in syntax_list
+            ])
+            chapter["results"] = yti_get(chapter["title"], "search")
+
+@use_api_cache
+def yti_get(query: str, action: str) -> dict:
+    output = subprocess.getoutput(f"""node yti.js "{query}" {action}""")
+    json_output = json.loads(output)
+    return json_output
+
+@dataclass
+class Video:
+    title: str
+    video_id: str
+    duration: int
+    chapters: list[dict]
+
+    @classmethod
+    def get(cls, args_link: str):
+        try:
+            video = CacheTools().load_video(args_link)
+            return cls(*video), True
+        except:
+            data = yti_get(args_link, "video")
+            return cls(
+                title=data["title"],
+                video_id=data["id"],
+                duration=data["duration"],
+                chapters=data["chapters"],
+            ), False
+
+    @classmethod
+    def load(cls, video_id):
+        video = CacheTools().load_video(video_id)
+        return cls(*video)
+
+    def filter(self):
+        syntax_list = "\'\"“”‘’"
+        if self.chapters == []:
+            print("no chapters.")
+        else:
+            for chapter in self.chapters:
+                chapter["title"] = "".join([
+                    character
+                    for character in chapter["title"]
+                    if character not in syntax_list
+                ])
+
+    def search(self) -> None:
+        for chapter in self.chapters:
+            chapter["query"] = chapter["title"] + " " + self.title
+            search = yti_get(chapter["query"], "search")
+            chapter["results"] = search["results"]
+
+    def calculate_durations(self) -> None:
+        self.chapters = sorted(self.chapters, key=lambda x: x["start"])
+
+        chapter_durations = [
+            int(self.chapters[i+1]["start"] - self.chapters[i]["start"])
+            for i in range(len(self.chapters) - 1)
+        ]
+        for i, duration in enumerate(chapter_durations):
+            self.chapters[i]["duration"] = int(duration/1000)
+
+        self.chapters[-1]["duration"] = self.duration - (self.chapters[-1]["start"]/1000)
+
+    def find_best_match(self) -> None:
+        for chapter in self.chapters:
+            for result in chapter["results"]:
+                result["ratio"] = SequenceMatcher(
+                    None, chapter["title"], result["title"]
+                ).ratio()
+                result["delta"] = abs(result["duration"] - chapter["duration"])
+
+            chapter["results"] = sorted(
+                chapter["results"],
+                key=lambda x: (x["ratio"], -x["delta"]),
+                reverse=True
+            )
+            chapter["pick"] = chapter["results"][0]
+
+    def print_best_matches(self):
+        print(self.title)
+        for chapter in self.chapters:
+            link_text = chapter["pick"]["title"]
+            url = f"https://www.youtube.com/watch?v={chapter['pick']['id']}"
+            print(f""" {chapter["title"]}: \033]8;;{url}\033\\{link_text}\033]8;;\033\\ """)
+
+    def find_all(self) -> None:
+        if self.chapters == []:
+            print("no chapters.")
+        else:
+            self.filter()
+            self.search()
+            self.calculate_durations()
+            self.find_best_match()
+            CacheTools().save_video(self)
+            self.print_best_matches()
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("video_id", help="video id.")
+    args = parser.parse_args()
+    return args
+
+if __name__ == "__main__":
+    args = get_args()
+    video, in_cache = Video.get(args.video_id)
+    if in_cache:
+        video.print_best_matches()
+    else:
+        video.find_all()
