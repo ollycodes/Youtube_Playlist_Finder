@@ -2,7 +2,7 @@
 
 from cache_tools import CacheTools, use_api_cache
 from difflib import SequenceMatcher
-import json, subprocess, re, argparse
+import json, subprocess, argparse
 from dataclasses import dataclass
 
 def filter_chapters(data):
