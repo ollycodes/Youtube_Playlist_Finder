@@ -1,4 +1,4 @@
-# Youtube Playlist Search
+# Youtube Playlist Finder
 A simple script to find all songs in chaptered youtube videos.
 
 # Installation
