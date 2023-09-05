@@ -1,5 +1,14 @@
 # Youtube Playlist Finder
-A simple script to find all songs in chaptered youtube videos.
+This script searches for every song in a chaptered Youtube video on Youtube.
+Chaptered videos are videos that have timestamped sections; typically guides
+and other forms of content will use these for quick references, but what I've
+found is that channels that make playlist mixes will use these for song credits.
+
+for each chapter in such videos, this script will look up the chapter name along
+with the video title and retrieve the most similar titled video. (This was done
+in order to help ambiguous cases where album name was ommited and may produce
+inaccurate results.) After finding the closest match, the script will output
+the list of results with links.
 
 # Installation
 1. Clone repository
@@ -14,7 +23,8 @@ npm install
 ```
 
 # Use
-- Run script with video id
 ```shell
+# run script with video id
+# youtube.com/watch?v=[VIDEO_ID]
 ./playlist Video_id
 ```
